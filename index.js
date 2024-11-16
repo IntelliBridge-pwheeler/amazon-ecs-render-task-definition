@@ -4,6 +4,8 @@ const tmp = require('tmp');
 const fs = require('fs');
 const {ECS} = require('@aws-sdk/client-ecs');
 
+
+
 async function run() {
   try {
     const ecs = new ECS({
@@ -26,7 +28,16 @@ async function run() {
     const taskDefinitionArn = core.getInput('task-definition-arn', { required: false }) || undefined;
     const taskDefinitionFamily = core.getInput('task-definition-family', { required: false }) || undefined;
     const taskDefinitionRevision = Number(core.getInput('task-definition-revision', { required: false })) || null;
+
     const secrets = core.getInput('secrets', { required: false });
+    let logDebug = core.getInput('log-debug', { required: false, trimWhitespace: true }) === 'true';
+
+    function debugLog(message) {
+      core.debug(message)
+      if (logDebug) {
+        console.log(`[DEBUG] ${message}`);
+      }
+    }
 
     let taskDefPath;
     let taskDefContents;
@@ -65,8 +76,8 @@ async function run() {
         throw(error); 
       }
       taskDefContents = describeTaskDefResponse.taskDefinition;
-      core.debug("Task definition contents:");
-      core.debug(JSON.stringify(taskDefContents, undefined, 4));
+      debugLog("Task definition contents:");
+      debugLog(JSON.stringify(taskDefContents, undefined, 4));
     } else {
       throw new Error("Either task definition, task definition arn or task definition family must be provided");
     }
@@ -144,7 +155,7 @@ async function run() {
       core.info('Handling secrets');
       // If secrets array is missing, create it
       if (!Array.isArray(containerDef.secrets)) {
-        core.debug('Adding secrets to container definition');
+        debugLog('Adding secrets to container definition');
         containerDef.secrets = [];
       }
 
@@ -172,11 +183,11 @@ async function run() {
         // Search container definition environment for one matching name
         const secretDef = containerDef.secrets.find((s) => s.name == secret.name);
         if (secretDef) {
-          core.debug(`Updating secret ${secret.name}`);
+          debugLog(`Updating secret ${secret.name}`);
           // If found, update
           secretDef.valueFrom = secret.valueFrom;
         } else {
-          core.debug(`Adding secret ${secret.name}`);
+          debugLog(`Adding secret ${secret.name}`);
           // Else, create
           containerDef.secrets.push(secret);
         }

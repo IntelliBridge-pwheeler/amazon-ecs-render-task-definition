@@ -10,6 +10,8 @@ const tmp = __nccwpck_require__(1288);
 const fs = __nccwpck_require__(9896);
 const {ECS} = __nccwpck_require__(212);
 
+
+
 async function run() {
   try {
     const ecs = new ECS({
@@ -32,7 +34,16 @@ async function run() {
     const taskDefinitionArn = core.getInput('task-definition-arn', { required: false }) || undefined;
     const taskDefinitionFamily = core.getInput('task-definition-family', { required: false }) || undefined;
     const taskDefinitionRevision = Number(core.getInput('task-definition-revision', { required: false })) || null;
+
     const secrets = core.getInput('secrets', { required: false });
+    let logDebug = core.getInput('log-debug', { required: false, trimWhitespace: true }) === 'true';
+
+    function debugLog(message) {
+      core.debug(message)
+      if (logDebug) {
+        console.log(`[DEBUG] ${message}`);
+      }
+    }
 
     let taskDefPath;
     let taskDefContents;
@@ -71,8 +82,8 @@ async function run() {
         throw(error); 
       }
       taskDefContents = describeTaskDefResponse.taskDefinition;
-      core.debug("Task definition contents:");
-      core.debug(JSON.stringify(taskDefContents, undefined, 4));
+      debugLog("Task definition contents:");
+      debugLog(JSON.stringify(taskDefContents, undefined, 4));
     } else {
       throw new Error("Either task definition, task definition arn or task definition family must be provided");
     }
@@ -119,7 +130,9 @@ async function run() {
         // Trim whitespace
         const trimmedLine = line.trim();
         // Skip if empty
-        if (trimmedLine.length === 0) { return; }
+        if (trimmedLine.length === 0) {
+          return;
+        }
         // Split on =
         const separatorIdx = trimmedLine.indexOf("=");
         // If there's nowhere to split
@@ -142,45 +155,49 @@ async function run() {
           containerDef.environment.push(variable);
         }
       })
+    }
 
-      if (secrets) {
-        // If secrets array is missing, create it
-        if (!Array.isArray(containerDef.secrets)) {
-          containerDef.secrets = [];
-        }
-
-        // Get pairs by splitting on newlines
-        secrets.split('\n').forEach(function (line) {
-          // Trim whitespace
-          const trimmedLine = line.trim();
-          // Skip if empty
-          if (trimmedLine.length === 0) { return; }
-          // Split on =
-          const separatorIdx = trimmedLine.indexOf("=");
-          // If there's nowhere to split
-          if (separatorIdx === -1) {
-              throw new Error(
-                `Cannot parse the secret '${trimmedLine}'. Secret pairs must be of the form NAME=valueFrom, 
-                where valueFrom is an arn from parameter store or secrets manager. See AWS documentation for more information: 
-                https://docs.aws.amazon.com/AmazonECS/latest/developerguide/specifying-sensitive-data.html.`);
-          }
-          // Build object
-          const secret = {
-            name: trimmedLine.substring(0, separatorIdx),
-            valueFrom: trimmedLine.substring(separatorIdx + 1),
-          };
-
-          // Search container definition environment for one matching name
-          const secretDef = containerDef.secrets.find((s) => s.name == secret.name);
-          if (secretDef) {
-            // If found, update
-            secretDef.valueFrom = secret.valueFrom;
-          } else {
-            // Else, create
-            containerDef.secrets.push(secret);
-          }
-        })
+    if (secrets) {
+      core.info('Handling secrets');
+      // If secrets array is missing, create it
+      if (!Array.isArray(containerDef.secrets)) {
+        debugLog('Adding secrets to container definition');
+        containerDef.secrets = [];
       }
+
+      // Get pairs by splitting on newlines
+      secrets.split('\n').forEach(function (line) {
+        // Trim whitespace
+        const trimmedLine = line.trim();
+        // Skip if empty
+        if (trimmedLine.length === 0) { return; }
+        // Split on =
+        const separatorIdx = trimmedLine.indexOf("=");
+        // If there's nowhere to split
+        if (separatorIdx === -1) {
+            throw new Error(
+              `Cannot parse the secret '${trimmedLine}'. Secret pairs must be of the form NAME=valueFrom, 
+              where valueFrom is an arn from parameter store or secrets manager. See AWS documentation for more information: 
+              https://docs.aws.amazon.com/AmazonECS/latest/developerguide/specifying-sensitive-data.html.`);
+        }
+        // Build object
+        const secret = {
+          name: trimmedLine.substring(0, separatorIdx),
+          valueFrom: trimmedLine.substring(separatorIdx + 1),
+        };
+
+        // Search container definition environment for one matching name
+        const secretDef = containerDef.secrets.find((s) => s.name == secret.name);
+        if (secretDef) {
+          debugLog(`Updating secret ${secret.name}`);
+          // If found, update
+          secretDef.valueFrom = secret.valueFrom;
+        } else {
+          debugLog(`Adding secret ${secret.name}`);
+          // Else, create
+          containerDef.secrets.push(secret);
+        }
+      })
     }
 
     if (logConfigurationLogDriver) {
@@ -248,6 +265,7 @@ module.exports = run;
 if (require.main === require.cache[eval('__filename')]) {
   run();
 }
+
 
 /***/ }),
 
